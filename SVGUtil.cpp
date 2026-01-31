@@ -1,6 +1,7 @@
 #include "SVGUtil.h"
 #include <sstream>
 #include <string_view>
+#include <stack>
 #include <xmllite.h>
 
 struct TransformFunction {
@@ -19,7 +20,7 @@ static void ltrim_str(std::wstring_view& source) {
 	}
 }
 
-static bool get_transform_functions(std::wstring_view& source, std::vector<TransformFunction>& functions) {
+static bool get_transform_functions(const std::wstring_view& source, std::vector<TransformFunction>& functions) {
 	size_t start = 0;
 
 	while (true) {
@@ -71,19 +72,18 @@ static bool get_transform_functions(std::wstring_view& source, std::vector<Trans
 }
 
 void SVGGraphicsElement::render_tree(ID2D1DeviceContext* pContext) {
+	OutputDebugStringW(L"Rendering element: ");
+	OutputDebugStringW(tagName.c_str());
+	OutputDebugStringW(L"\n");
+
 	//Save the old transform
 	D2D1_MATRIX_3X2_F oldTransform;
 
-	pContext->GetTransform(&oldTransform);
-
-	//Combine all transforms
-	D2D1_MATRIX_3X2_F combinedTransform = D2D1::Matrix3x2F::Identity();
-
-	for (const auto& t : transforms) {
-		combinedTransform = combinedTransform * t;
+	if (combinedTransform) {
+		OutputDebugStringW(L"Applying transform\n");
+		pContext->GetTransform(&oldTransform);
+		pContext->SetTransform(combinedTransform.value());
 	}
-
-	pContext->SetTransform(combinedTransform);
 
 	render(pContext);
 
@@ -92,7 +92,49 @@ void SVGGraphicsElement::render_tree(ID2D1DeviceContext* pContext) {
 		child->render_tree(pContext);
 	}
 
-	pContext->SetTransform(oldTransform);
+	if (combinedTransform) {
+		OutputDebugStringW(L"Restoring transform\n");
+		pContext->SetTransform(oldTransform);
+	}
+}
+
+bool build_transform_matrix(const std::wstring_view& transformStr, D2D1_MATRIX_3X2_F& outMatrix) {
+	std::vector<TransformFunction> functions;
+
+	if (!get_transform_functions(transformStr, functions)) {
+		return false;
+	}
+
+	outMatrix = D2D1::Matrix3x2F::Identity();
+
+	for (const auto& f : functions) {
+		if (f.name == L"translate") {
+			if (f.values.size() == 1) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Translation(f.values[0], 0.0f);
+			}
+			else if (f.values.size() == 2) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Translation(f.values[0], f.values[1]);
+			}
+		}
+		else if (f.name == L"scale") {
+			if (f.values.size() == 1) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Scale(f.values[0], f.values[0]);
+			}
+			else if (f.values.size() == 2) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Scale(f.values[0], f.values[1]);
+			}
+		}
+		else if (f.name == L"rotate") {
+			if (f.values.size() == 1) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Rotation(f.values[0]);
+			}
+			else if (f.values.size() == 3) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Rotation(f.values[0], D2D1::Point2F(f.values[1], f.values[2]));
+			}
+		}
+	}
+
+	return true;
 }
 
 void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& pathData) {
@@ -152,6 +194,7 @@ void SVGPathElement::render(ID2D1DeviceContext* pContext) {
 }
 
 void SVGRectElement::render(ID2D1DeviceContext* pContext) {
+	OutputDebugStringW(L"Drawing rectangle\n");
 	pContext->FillRectangle(
 		D2D1::RectF(points[0], points[1], points[0] + points[2], points[1] + points[3]),
 		fillBrush
@@ -231,9 +274,12 @@ void SVGUtil::resize()
 void SVGUtil::render()
 {
 	pDeviceContext->BeginDraw();
-	pDeviceContext->Clear(D2D1::ColorF(D2D1::ColorF::Beige));
+	pDeviceContext->Clear(D2D1::ColorF(D2D1::ColorF::White));
 
-	
+	if (rootElement) {
+		//Render the SVG element tree
+		rootElement->render_tree(pDeviceContext);
+	}
 
 	pDeviceContext->EndDraw();
 }
@@ -278,6 +324,29 @@ bool get_attribute(IXmlReader* pReader, const wchar_t* attr_name, std::wstring_v
 	return true;
 }
 
+bool get_attribute(IXmlReader* pReader, const wchar_t* attr_name, float& attr_value) {
+	const wchar_t* pwszValue = NULL;
+	UINT len;
+
+	HRESULT hr = pReader->MoveToAttributeByName(attr_name, NULL);
+
+	if (hr == S_FALSE) {
+		return false; //Attribute not found
+	}
+
+	if (!SUCCEEDED(hr)) {
+		return false;
+	}
+
+	hr = pReader->GetValue(&pwszValue, &len);
+
+	if (!SUCCEEDED(hr)) {
+		return false;
+	}
+
+	return swscanf_s(pwszValue, L"%f", &attr_value) == 1;
+}
+
 bool SVGUtil::parse(const wchar_t* fileName) {
 	CComPtr<IXmlReader> pReader;
 
@@ -301,6 +370,8 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 		return false;
 	}
 
+	std::stack<std::shared_ptr<SVGGraphicsElement>> parent_stack;
+
 	while (true) {
 		XmlNodeType nodeType;
 
@@ -321,21 +392,56 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				return false;
 			}
 
-			if (get_attribute(pReader, L"transform", attr_value)) {
-				std::vector<TransformFunction> functions;
-				if (get_transform_functions(attr_value, functions)) {
-					for (auto& f : functions) {
-						OutputDebugStringW(f.name.c_str());
-						OutputDebugStringW(L"\n\t");	
+			std::shared_ptr<SVGGraphicsElement> new_element;
 
-						for (float v : f.values) {
-							OutputDebugStringW(std::to_wstring(v).c_str());
-							OutputDebugStringW(L", ");
-						}
+			if (element_name == L"svg") {
+				new_element = std::make_shared<SVGGraphicsElement>();
+				rootElement = new_element;
+			}
+			else if (element_name == L"rect") {
+				float x, y, width, height;
+				if (get_attribute(pReader, L"x", x) &&
+					get_attribute(pReader, L"y", y) &&
+					get_attribute(pReader, L"width", width) &&
+					get_attribute(pReader, L"height", height)) {
+					new_element = std::make_shared<SVGRectElement>();
 
-						OutputDebugStringW(L"\n");
+					new_element->points.push_back(x);
+					new_element->points.push_back(y);
+					new_element->points.push_back(width);
+					new_element->points.push_back(height);
+				}
+			} else if (element_name == L"path") {
+				if (get_attribute(pReader, L"d", attr_value)) {
+					auto path_element = std::make_shared<SVGPathElement>();
+
+					path_element->buildPath(pFactory, attr_value);
+					new_element = path_element;
+				}
+			} else if (element_name == L"group" || element_name == L"g") {
+				new_element = std::make_shared<SVGGElement>();
+			}
+
+			if (new_element) {
+				new_element->tagName = element_name;
+
+				if (get_attribute(pReader, L"transform", attr_value)) {
+					D2D1_MATRIX_3X2_F trans;
+
+					if (build_transform_matrix(attr_value, trans)) {
+						new_element->combinedTransform = trans;
 					}
 				}
+
+				//Set default brushes
+				new_element->fillBrush = defaultFillBrush;
+				new_element->strokeBrush = defaultStrokeBrush;
+
+				if (!parent_stack.empty()) {
+					parent_stack.top()->children.push_back(new_element);
+				}
+
+				parent_stack.push(new_element);
 			}
 		}
 		else if (nodeType == XmlNodeType_Text) {
@@ -345,12 +451,19 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 			if (!SUCCEEDED(hr)) {
 				return false;
 			}
-
-			OutputDebugStringW(L"\tValue: ");
-			OutputDebugStringW(pwszValue);
-			OutputDebugStringW(L"\n");
+		}
+		else if (nodeType == XmlNodeType_EndElement) {
+			if (!parent_stack.empty()) {
+				parent_stack.pop();
+			}
 		}
 	}
 
-	return true;
+	//If we reach here, no <svg> element was found
+	return false;
+}
+
+void SVGUtil::redraw()
+{
+	InvalidateRect(wnd, NULL, FALSE);
 }

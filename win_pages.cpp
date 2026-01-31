@@ -23,68 +23,6 @@ void check_throw(HRESULT hr) {
     }
 }
 
-void test_xml() {
-	CComPtr<IXmlReader> pReader;
-
-    HRESULT hr = ::CreateXmlReader(__uuidof(IXmlReader), (void**)&pReader, NULL);
-    check_throw(hr);
-
-    //Read XML from test.xml file
-	CComPtr<IStream> pFileStream;
-	hr = SHCreateStreamOnFileEx(L"test.xml", STGM_READ | STGM_SHARE_DENY_WRITE, FILE_ATTRIBUTE_NORMAL, FALSE, NULL, &pFileStream);
-	check_throw(hr);
-	hr = pReader->SetInput(pFileStream);
-	check_throw(hr);
-
-    while (true) {
-        XmlNodeType nodeType;
-
-        hr = pReader->Read(&nodeType);
-
-        if (hr == S_FALSE) {
-            break; //End of file
-        }
-
-        check_throw(hr);
-
-        if (nodeType == XmlNodeType_Element) {
-            const wchar_t* pwszLocalName = NULL;
-            hr = pReader->GetLocalName(&pwszLocalName, NULL);
-            check_throw(hr);
-            //For demonstration, we just show a message box with the element name
-            OutputDebugStringW(pwszLocalName);
-			OutputDebugStringW(L"\n");
-
-			//Print the font-family attribute if it exists
-			const wchar_t* pwszValue = NULL;
-			hr = pReader->MoveToAttributeByName(L"font-family", NULL);
-
-            if (hr == S_FALSE) {
-                continue; //Attribute not found
-			}
-
-			check_throw(hr);
-
-			hr = pReader->GetValue(&pwszValue, NULL);
-            check_throw(hr);
-
-            OutputDebugStringW(L"\tfont-family: ");
-            OutputDebugStringW(pwszValue);
-            OutputDebugStringW(L"\n");
-        }
-        else if (nodeType == XmlNodeType_Text) {
-			const wchar_t* pwszValue = NULL;
-
-			hr = pReader->GetValue(&pwszValue, NULL);
-			check_throw(hr);
-
-            OutputDebugStringW(L"\tValue: ");
-            OutputDebugStringW(pwszValue);
-            OutputDebugStringW(L"\n");
-        }
-    }
-}
-
 class MainWindow : public CFrame {
 	SVGUtil svgUtil;
 public:
@@ -102,6 +40,8 @@ public:
             std::wstring filename;
 
 			svgUtil.parse(L"test.svg");
+
+			svgUtil.redraw();
         }
         else if (id == IDM_EXIT) {
             onClose();

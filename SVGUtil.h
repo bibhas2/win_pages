@@ -6,21 +6,21 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <optional>
 
 struct SVGGraphicsElement {
 	std::wstring tagName;
 	CComPtr<ID2D1SolidColorBrush> fillBrush;
 	CComPtr<ID2D1SolidColorBrush> strokeBrush;
-	std::vector<std::unique_ptr<SVGGraphicsElement>> children;
-	std::vector<D2D1_MATRIX_3X2_F> transforms;
+	std::vector<std::shared_ptr<SVGGraphicsElement>> children;
+	std::optional<D2D1_MATRIX_3X2_F> combinedTransform;
 	std::vector<float> points;
 
 	virtual void render_tree(ID2D1DeviceContext* pContext);
-	virtual void render(ID2D1DeviceContext* pContext) = 0;
+	virtual void render(ID2D1DeviceContext* pContext) {};
 };
 
 struct SVGGElement : public SVGGraphicsElement {
-	void render(ID2D1DeviceContext* pContext);
 };
 
 struct SVGRectElement : public SVGGraphicsElement {
@@ -42,11 +42,12 @@ struct SVGUtil
 	CComPtr<ID2D1DeviceContext> pDeviceContext;
 	CComPtr<ID2D1SolidColorBrush> defaultFillBrush;
 	CComPtr<ID2D1SolidColorBrush> defaultStrokeBrush;
-	std::unique_ptr<SVGGraphicsElement> rootElement;
+	std::shared_ptr<SVGGraphicsElement> rootElement;
 
 	bool init(HWND wnd);
 	void resize();
 	void render();
+	void redraw();
 	bool parse(const wchar_t* fileName);
 };
 
