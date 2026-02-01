@@ -171,14 +171,23 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 	pathGeometry->Open(&pSink);
 
 	std::wstring pathStr(pathData);
+
+	//Replace comma with spaces
+	for (size_t pos = 0; pos < pathStr.length(); ++pos) {
+		if (pathStr[pos] == L',') {
+			pathStr[pos] = L' ';
+		}
+	}
+
 	//Direct creation of string stream from string view only from C++ 26
 	std::wstringstream ws(pathStr);
 	wchar_t cmd = 0, last_cmd = 0;
+	bool is_in_figure = false;
 
 	while (!ws.eof()) {
 		ws >> cmd;
 
-		if (cmd != L'L' && cmd != L'Z' && cmd != L'M') {
+		if (cmd != L'L' && cmd != L'Z' && cmd != L'M' && cmd != L'Q' && cmd != L'C') {
 			ws.unget();
 
 			if (last_cmd == L'M') {
@@ -190,8 +199,12 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 		}
 
 		if (cmd == L'Z') {
-			//End of path
-			pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+			//Close the current figure
+			if (is_in_figure) {
+				pSink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+				is_in_figure = false;
+			}
 
 			break;
 		}
@@ -199,17 +212,41 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 		float x = 0.0, y = 0.0;
 
 		if (cmd == L'M') {
+			//If we are already in a figure, end it first
+			if (is_in_figure) {
+				pSink->EndFigure(D2D1_FIGURE_END_OPEN);
+			}
+
 			ws >> x >> y;
 
 			pSink->BeginFigure(D2D1::Point2F(x, y), D2D1_FIGURE_BEGIN_FILLED);
+			is_in_figure = true;
 		}
 		else if (cmd == L'L') {
 			ws >> x >> y;
 
 			pSink->AddLine(D2D1::Point2F(x, y));
 		}
+		else if (cmd == L'Q') {
+			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
+
+			ws >> x1 >> y1 >> x2 >> y2;
+
+			pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2)));
+		} else if (cmd == L'C') {
+			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0, x3 = 0.0, y3 = 0.0;
+			ws >> x1 >> y1 >> x2 >> y2 >> x3 >> y3;
+			pSink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), D2D1::Point2F(x3, y3)));
+		}
 
 		last_cmd = cmd;
+	}
+
+	//End of path
+	if (is_in_figure) {
+		pSink->EndFigure(D2D1_FIGURE_END_OPEN);
+
+		is_in_figure = false;
 	}
 
 	pSink->Close();
@@ -220,12 +257,13 @@ void SVGPathElement::render(ID2D1DeviceContext* pContext) {
 		pContext->FillGeometry(pathGeometry, fillBrush);
 	}
 	if (strokeBrush) {
+		OutputDebugStringW(L"DrawGeometry\n");
+
 		pContext->DrawGeometry(pathGeometry, strokeBrush, strokeWidth);
 	}
 }
 
 void SVGRectElement::render(ID2D1DeviceContext* pContext) {
-	OutputDebugStringW(L"Drawing rectangle\n");
 	if (fillBrush) {
 		pContext->FillRectangle(
 			D2D1::RectF(points[0], points[1], points[0] + points[2], points[1] + points[3]),
