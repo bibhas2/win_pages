@@ -175,7 +175,7 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 	std::wstringstream ws(pathStr);
 	wchar_t cmd = 0, last_cmd = 0;
 
-	while (true) {
+	while (!ws.eof()) {
 		ws >> cmd;
 
 		if (cmd != L'L' && cmd != L'Z' && cmd != L'M') {
@@ -191,6 +191,8 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 		if (cmd == L'Z') {
 			//End of path
+			pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
 			break;
 		}
 
@@ -207,8 +209,6 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			pSink->AddLine(D2D1::Point2F(x, y));
 		}
 
-		//std::wcout << cmd << " " << x << " " << y << std::endl;
-
 		last_cmd = cmd;
 	}
 
@@ -216,7 +216,12 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 }
 
 void SVGPathElement::render(ID2D1DeviceContext* pContext) {
-	pContext->FillGeometry(pathGeometry, fillBrush);
+	if (fillBrush) {
+		pContext->FillGeometry(pathGeometry, fillBrush);
+	}
+	if (strokeBrush) {
+		pContext->DrawGeometry(pathGeometry, strokeBrush, strokeWidth);
+	}
 }
 
 void SVGRectElement::render(ID2D1DeviceContext* pContext) {
