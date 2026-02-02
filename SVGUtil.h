@@ -32,6 +32,10 @@ struct SVGCircleElement : public SVGGraphicsElement {
 	void render(ID2D1DeviceContext* pContext) override;
 };
 
+struct SVGEllipseElement : public SVGGraphicsElement {
+	void render(ID2D1DeviceContext* pContext) override;
+};
+
 struct SVGPathElement : public SVGGraphicsElement {
 	CComPtr<ID2D1PathGeometry> pathGeometry;
 
