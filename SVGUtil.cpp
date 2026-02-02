@@ -490,11 +490,19 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				return false;
 			}
 
+			std::shared_ptr<SVGGraphicsElement> parent_element;
 			std::shared_ptr<SVGGraphicsElement> new_element;
+
+			if (!parent_stack.empty()) {
+				parent_element = parent_stack.top();
+			}
 
 			if (element_name == L"svg") {
 				new_element = std::make_shared<SVGGraphicsElement>();
 				rootElement = new_element;
+				//Set up default brushes
+				new_element->fillBrush = defaultFillBrush;
+				new_element->strokeBrush = defaultStrokeBrush;
 			}
 			else if (element_name == L"rect") {
 				float x, y, width, height;
@@ -551,6 +559,11 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 							}
 						}
 					}
+				} else {
+					if (parent_element) {
+						//Inherit stroke brush from parent
+						new_element->strokeBrush = parent_element->strokeBrush;
+					}
 				}
 
 				if (get_attribute(pReader, L"fill", attr_value)) {
@@ -570,6 +583,11 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 							}
 						}
 					}
+				} else {
+					if (parent_element) {
+						//Inherit fill brush from parent
+						new_element->fillBrush = parent_element->fillBrush;
+					}
 				}
 
 				//Get stroke width
@@ -581,10 +599,10 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 					new_element->strokeWidth = 1.0f; //Default stroke width
 				}
 
-				if (!parent_stack.empty()) {
-					parent_stack.top()->children.push_back(new_element);
+				if (parent_element) {
+					//Add the new element to its parent
+					parent_element->children.push_back(new_element);
 				}
-
 			}
 
 			//Push the new element onto the stack
