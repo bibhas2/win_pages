@@ -206,30 +206,25 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 	wchar_t cmd = 0, last_cmd = 0;
 	bool is_in_figure = false;
+	std::wstring_view supported_cmds(L"MLQCZz");
 
 	while (!ws.eof()) {
+		//Read command letter
 		ws >> cmd;
 
-		if (cmd != L'L' && cmd != L'Z' && cmd != L'M' && cmd != L'Q' && cmd != L'C') {
+		if (supported_cmds.find_first_of(cmd) == std::wstring_view::npos) {
+			//We did not find a command. Put it back.
 			ws.unget();
 
+			//As per the SVG spec deduce the command from the last command
 			if (last_cmd == L'M') {
+				//Subsequent moveto pairs are treated as lineto commands
 				cmd = L'L';
 			}
 			else {
+				//Continue with the last command
 				cmd = last_cmd;
 			}
-		}
-
-		if (cmd == L'Z') {
-			//Close the current figure
-			if (is_in_figure) {
-				pSink->EndFigure(D2D1_FIGURE_END_OPEN);
-
-				is_in_figure = false;
-			}
-
-			break;
 		}
 
 		float x = 0.0, y = 0.0;
@@ -260,6 +255,12 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0, x3 = 0.0, y3 = 0.0;
 			ws >> x1 >> y1 >> x2 >> y2 >> x3 >> y3;
 			pSink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), D2D1::Point2F(x3, y3)));
+		} else if (cmd == L'Z' || cmd == L'z') {
+			//Close the current figure
+			if (is_in_figure) {
+				pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+				is_in_figure = false;
+			}
 		}
 
 		last_cmd = cmd;
