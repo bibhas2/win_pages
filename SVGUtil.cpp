@@ -200,29 +200,22 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 	//entirely optional. Numbers can either be separated by comma or spaces.
 	//Here we normalize the path by properly separating commands and numbers by spaces.
 	std::wstringstream ws;
-	bool last_char_is_num = false;
 	std::wstring_view spaces(L", \t\r\n");
 
 	for (wchar_t ch : pathData) {
 		if (spaces.find_first_of(ch) != std::wstring_view::npos) {
 			//Normalize all spaces to single space
 			ws << L' ';
-			last_char_is_num = false;
+		} else if (ch == L'-') {
+			//Insert space before negative sign
+			ws << L' ';
+			ws << ch;
+		}
+		else if (ch == L',') {
+			ws << L' ';
 		}
 		else {
-			if (char_is_number(ch)) {
-				if (!last_char_is_num) {
-					//Insert space before number if last char is not a number
-					ws << L' ';
-				}
-				ws << ch;
-				last_char_is_num = true;
-			}
-			else {
-				//It's a command character
-				ws << L' ' << ch << L' ';
-				last_char_is_num = false;
-			}
+			ws << ch;
 		}
 	}
 
@@ -232,7 +225,10 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 	while (!ws.eof()) {
 		//Read command letter
-		ws >> cmd;
+		if (!(ws >> cmd)) {
+			//End of stream
+			break;
+		}
 
 		if (supported_cmds.find_first_of(cmd) == std::wstring_view::npos) {
 			//We did not find a command. Put it back.
@@ -562,7 +558,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				rootElement = new_element;
 				//Set up default brushes
 				new_element->fillBrush = defaultFillBrush;
-				new_element->strokeBrush = defaultStrokeBrush;
+				new_element->strokeBrush = nullptr;
 			}
 			else if (element_name == L"rect") {
 				float x, y, width, height;
