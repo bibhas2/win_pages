@@ -157,6 +157,25 @@ bool build_transform_matrix(const std::wstring_view& transformStr, D2D1_MATRIX_3
 			else if (f.values.size() == 3) {
 				outMatrix = outMatrix * D2D1::Matrix3x2F::Rotation(f.values[0], D2D1::Point2F(f.values[1], f.values[2]));
 			}
+		} else if (f.name == L"matrix") {
+			if (f.values.size() == 6) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Scale(f.values[0], f.values[3]);
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Skew(f.values[1], f.values[2]);
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Translation(f.values[4], f.values[5]);
+
+				/*D2D1_MATRIX_3X2_F m = D2D1::Matrix3x2F(
+					f.values[0], f.values[1],
+					f.values[2], f.values[3],
+					f.values[4], f.values[5]
+				);
+				outMatrix = outMatrix * m;*/
+			}
+		}
+		else if (f.name == L"skew") {
+			//Apply skew transform
+			if (f.values.size() == 2) {
+				outMatrix = outMatrix * D2D1::Matrix3x2F::Skew(f.values[0], f.values[1]);
+			}
 		}
 	}
 
@@ -698,7 +717,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 					OutputDebugStringW(L"Parent::Child: ");
 					OutputDebugStringW(parent_element->tagName.c_str());
 					OutputDebugStringW(L"::");
-					OutputDebugStringW(new_element->tagName.c_str());
+					OutputDebugStringW(element_name.data());
 					OutputDebugStringW(L"\n");
 					parent_element->children.push_back(new_element);
 				}
@@ -710,7 +729,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				//Push the new element onto the stack
 				//This may be null if the element is not supported
 				OutputDebugStringW(L"Pushing to parent stack: ");
-				OutputDebugStringW(new_element->tagName.c_str());
+				OutputDebugStringW(element_name.data());
 				OutputDebugStringW(L"\n");
 				parent_stack.push(new_element);
 			}
