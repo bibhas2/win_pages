@@ -163,6 +163,10 @@ bool build_transform_matrix(const std::wstring_view& transformStr, D2D1_MATRIX_3
 	return true;
 }
 
+bool char_is_number(wchar_t ch) {
+	return (ch >= 48 && ch <= 57) || (ch == L'.') || (ch == L'-');
+}
+
 void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& pathData) {
 	pFactory->CreatePathGeometry(&pathGeometry);
 
@@ -170,17 +174,36 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 	pathGeometry->Open(&pSink);
 
-	std::wstring pathStr(pathData);
+	//SVG spec is very leinent on path syntax. White spaces are
+	//entirely optional. Numbers can either be separated by comma or spaces.
+	//Here we normalize the path by properly separating commands and numbers by spaces.
+	std::wstringstream ws;
+	bool last_char_is_num = false;
+	std::wstring_view spaces(L", \t\r\n");
 
-	//Replace comma with spaces
-	for (size_t pos = 0; pos < pathStr.length(); ++pos) {
-		if (pathStr[pos] == L',') {
-			pathStr[pos] = L' ';
+	for (wchar_t ch : pathData) {
+		if (spaces.find_first_of(ch) != std::wstring_view::npos) {
+			//Normalize all spaces to single space
+			ws << L' ';
+			last_char_is_num = false;
+		}
+		else {
+			if (char_is_number(ch)) {
+				if (!last_char_is_num) {
+					//Insert space before number if last char is not a number
+					ws << L' ';
+				}
+				ws << ch;
+				last_char_is_num = true;
+			}
+			else {
+				//It's a command character
+				ws << L' ' << ch << L' ';
+				last_char_is_num = false;
+			}
 		}
 	}
 
-	//Direct creation of string stream from string view only from C++ 26
-	std::wstringstream ws(pathStr);
 	wchar_t cmd = 0, last_cmd = 0;
 	bool is_in_figure = false;
 
@@ -254,6 +277,7 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 void SVGPathElement::render(ID2D1DeviceContext* pContext) {
 	if (fillBrush) {
+		OutputDebugStringW(L"FillGeometry\n");
 		pContext->FillGeometry(pathGeometry, fillBrush);
 	}
 	if (strokeBrush) {
