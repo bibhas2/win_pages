@@ -219,7 +219,8 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 	wchar_t cmd = 0, last_cmd = 0;
 	bool is_in_figure = false;
-	std::wstring_view supported_cmds(L"MLQCZz");
+	std::wstring_view supported_cmds(L"MLHVQCZz");
+	float current_x = 0.0, current_y = 0.0;
 
 	while (!ws.eof()) {
 		//Read command letter
@@ -243,9 +244,9 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			}
 		}
 
-		float x = 0.0, y = 0.0;
-
 		if (cmd == L'M') {
+			float x = 0.0, y = 0.0;
+
 			//If we are already in a figure, end it first
 			if (is_in_figure) {
 				pSink->EndFigure(D2D1_FIGURE_END_OPEN);
@@ -255,11 +256,40 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 			pSink->BeginFigure(D2D1::Point2F(x, y), D2D1_FIGURE_BEGIN_FILLED);
 			is_in_figure = true;
+			//Update current point
+			current_x = x;
+			current_y = y;
 		}
 		else if (cmd == L'L') {
+			float x = 0.0, y = 0.0;
+
 			ws >> x >> y;
 
 			pSink->AddLine(D2D1::Point2F(x, y));
+
+			//Update current point
+			current_x = x;
+			current_y = y;
+		}
+		else if (cmd == L'H') {
+			float x = 0.0;
+
+			ws >> x;
+
+			pSink->AddLine(D2D1::Point2F(x, current_y));
+
+			//Update current point
+			current_x = x;
+		}
+		else if (cmd == L'V') {
+			float y = 0.0;
+
+			ws >> y;
+
+			pSink->AddLine(D2D1::Point2F(current_x, y));
+
+			//Update current point
+			current_y = y;
 		}
 		else if (cmd == L'Q') {
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
@@ -267,10 +297,18 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			ws >> x1 >> y1 >> x2 >> y2;
 
 			pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2)));
+
+			//Update current point
+			current_x = x2;
+			current_y = y2;
 		} else if (cmd == L'C') {
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0, x3 = 0.0, y3 = 0.0;
 			ws >> x1 >> y1 >> x2 >> y2 >> x3 >> y3;
 			pSink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), D2D1::Point2F(x3, y3)));
+
+			//Update current point
+			current_x = x3;
+			current_y = y3;
 		} else if (cmd == L'Z' || cmd == L'z') {
 			//Close the current figure
 			if (is_in_figure) {

@@ -1,0 +1,6 @@
+<svg version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <!-- 
+  Test for H and V commands.
+  -->
+  <path d="M10 10 H 70 V 70 H 10 C 10 90 70 90 50 70 V 100" stroke="#31e031" stroke-width="4" fill="none" />
+  </svg>
