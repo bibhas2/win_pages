@@ -355,6 +355,17 @@ void SVGEllipseElement::render(ID2D1DeviceContext* pContext) {
 	}
 }
 
+void SVGLineElement::render(ID2D1DeviceContext* pContext) {
+	if (strokeBrush) {
+		pContext->DrawLine(
+			D2D1::Point2F(points[0], points[1]),
+			D2D1::Point2F(points[2], points[3]),
+			strokeBrush,
+			strokeWidth
+		);
+	}
+}
+
 bool SVGUtil::init(HWND _wnd)
 {
 	wnd = _wnd;
@@ -617,6 +628,23 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				}
 			} else if (element_name == L"group" || element_name == L"g") {
 				new_element = std::make_shared<SVGGElement>();
+			} else if (element_name == L"line") {
+				float x1, y1, x2, y2;
+
+				if (get_attribute(pReader, L"x1", x1) &&
+					get_attribute(pReader, L"y1", y1) &&
+					get_attribute(pReader, L"x2", x2) &&
+					get_attribute(pReader, L"y2", y2)) {
+					
+					auto line_element = std::make_shared<SVGLineElement>();
+
+					line_element->points.push_back(x1);
+					line_element->points.push_back(y1);
+					line_element->points.push_back(x2);
+					line_element->points.push_back(y2);
+
+					new_element = line_element;
+				}
 			}
 
 			if (new_element) {
