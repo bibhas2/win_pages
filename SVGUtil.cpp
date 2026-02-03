@@ -400,7 +400,7 @@ bool SVGUtil::init(HWND _wnd)
 	}
 
 	hr = pDeviceContext->CreateSolidColorBrush(
-		D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f),
+		D2D1::ColorF(D2D1::ColorF::Black),
 		&defaultFillBrush
 	);
 
