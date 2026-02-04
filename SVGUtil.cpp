@@ -20,6 +20,22 @@ static void ltrim_str(std::wstring_view& source) {
 	}
 }
 
+std::vector<std::wstring_view>
+static split_string(std::wstring_view source, std::wstring_view separator) {
+	std::vector<std::wstring_view> list;
+	size_t pos, start = 0;
+
+	while ((pos = source.find(separator, start)) != std::string_view::npos) {
+		list.push_back(source.substr(start, (pos - start)));
+
+		start = pos + separator.length();
+	}
+
+	list.push_back(source.substr(start));
+
+	return list;
+}
+
 bool SVGUtil::get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a) {
 	if (source.empty()) {
 		return false;
@@ -160,6 +176,52 @@ void SVGGraphicsElement::render_tree(ID2D1DeviceContext* pContext) {
 		OutputDebugStringW(L"Restoring transform\n");
 		pContext->SetTransform(oldTransform);
 	}
+}
+
+CComPtr<IDWriteTextFormat> SVGUtil::build_text_format(IDWriteFactory* pDWriteFactory, std::wstring_view family, std::wstring_view weight, std::wstring_view style, float size) {
+	CComPtr<IDWriteTextFormat> textFormat;
+	//Split the family string by commas and try to find the first installed font
+	auto families = split_string(family, L",");
+	DWRITE_FONT_WEIGHT fontWeight = DWRITE_FONT_WEIGHT_NORMAL;
+	DWRITE_FONT_STYLE fontStyle = DWRITE_FONT_STYLE_NORMAL;
+
+	if (weight == L"bold") {
+		fontWeight = DWRITE_FONT_WEIGHT_BOLD;
+	} else if (weight == L"normal") {
+		fontWeight = DWRITE_FONT_WEIGHT_NORMAL;
+	} else if (weight == L"light") {
+		fontWeight = DWRITE_FONT_WEIGHT_LIGHT;
+	}
+
+	if (style == L"italic") {
+		fontStyle = DWRITE_FONT_STYLE_ITALIC;
+	} else if (style == L"normal") {
+		fontStyle = DWRITE_FONT_STYLE_NORMAL;
+	} else if (style == L"oblique") {
+		fontStyle = DWRITE_FONT_STYLE_OBLIQUE;
+	}
+
+	for (auto& fam : families) {
+		ltrim_str(fam);
+
+		std::wstring trimmedFamily(fam);
+
+		HRESULT hr = pDWriteFactory->CreateTextFormat(
+				trimmedFamily.c_str(),
+				nullptr,
+				fontWeight,
+				fontStyle,
+				DWRITE_FONT_STRETCH_NORMAL,
+				size,
+				L"",
+				&textFormat);
+
+		if (SUCCEEDED(hr)) {
+			return textFormat;
+		}
+	}
+
+	return defaultTextFormat;
 }
 
 bool build_transform_matrix(const std::wstring_view& transformStr, D2D1_MATRIX_3X2_F& outMatrix) {
@@ -494,6 +556,16 @@ bool SVGUtil::init(HWND _wnd)
 		return false;
 	}
 
+	hr = DWriteCreateFactory(
+		DWRITE_FACTORY_TYPE_SHARED,
+		__uuidof(IDWriteFactory),
+		reinterpret_cast<IUnknown**>(&pDWriteFactory)
+	);
+
+	if (!SUCCEEDED(hr)) {
+		return false;
+	}
+
 	// Create Render Target
 	RECT rc;
 
@@ -550,6 +622,19 @@ bool SVGUtil::init(HWND _wnd)
 	namedColors[L"grey"] = D2D1::ColorF::Gray;
 	namedColors[L"gray"] = D2D1::ColorF::Gray;
 	namedColors[L"teal"] = D2D1::ColorF::Teal;
+
+	//Create default text format
+	defaultTextFormat = build_text_format(
+		pDWriteFactory,
+		L"Arial, sans-serif, Verdana",
+		L"normal",
+		L"normal",
+		12.0f
+	);
+
+	if (!defaultTextFormat) {
+		return false;
+	}
 
 	return true;
 }

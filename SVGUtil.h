@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <map>
+#include <dwrite.h>
 
 struct SVGGraphicsElement {
 	std::wstring tagName;
@@ -53,10 +54,12 @@ struct SVGUtil
 {
 	HWND wnd;
 	CComPtr<ID2D1Factory> pFactory;
+	CComPtr<IDWriteFactory> pDWriteFactory;
 	CComPtr<ID2D1HwndRenderTarget> pRenderTarget;
 	CComPtr<ID2D1DeviceContext> pDeviceContext;
 	CComPtr<ID2D1SolidColorBrush> defaultFillBrush;
 	CComPtr<ID2D1SolidColorBrush> defaultStrokeBrush;
+	CComPtr<IDWriteTextFormat> defaultTextFormat;
 	std::shared_ptr<SVGGraphicsElement> rootElement;
 	std::map<std::wstring, UINT32> namedColors;
 
@@ -66,5 +69,6 @@ struct SVGUtil
 	void redraw();
 	bool parse(const wchar_t* fileName);
 	bool get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a);
+	CComPtr<IDWriteTextFormat> build_text_format(IDWriteFactory* pDWriteFactory, std::wstring_view family, std::wstring_view weight, std::wstring_view style, float size);
 };
 

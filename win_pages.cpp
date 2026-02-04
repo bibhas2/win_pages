@@ -15,7 +15,7 @@
 //We need dxguid.lib for some of the CLSID and IID definitions
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "xmllite.lib")
-
+#pragma comment(lib, "dwrite.lib")
 
 void check_throw(HRESULT hr) {
     if (!SUCCEEDED(hr)) {
