@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <map>
 
 struct SVGGraphicsElement {
 	std::wstring tagName;
@@ -57,11 +58,13 @@ struct SVGUtil
 	CComPtr<ID2D1SolidColorBrush> defaultFillBrush;
 	CComPtr<ID2D1SolidColorBrush> defaultStrokeBrush;
 	std::shared_ptr<SVGGraphicsElement> rootElement;
+	std::map<std::wstring, UINT32> namedColors;
 
 	bool init(HWND wnd);
 	void resize();
 	void render();
 	void redraw();
 	bool parse(const wchar_t* fileName);
+	bool get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a);
 };
 

@@ -20,7 +20,33 @@ static void ltrim_str(std::wstring_view& source) {
 	}
 }
 
-bool get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a) {
+bool SVGUtil::get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a) {
+	if (source.empty()) {
+		return false;
+	}
+
+	// Trim leading whitespace
+	ltrim_str(source);
+
+	if (source == L"none") {
+		return false;
+	}
+
+	//See if it is a named color
+	if (source[0] != L'#') {
+		auto iter = namedColors.find(std::wstring(source));
+		if (iter != namedColors.end()) {
+			UINT32 color = iter->second;
+
+			r = ((color >> 16) & 0xFF) / 255.0f;
+			g = ((color >> 8) & 0xFF) / 255.0f;
+			b = (color & 0xFF) / 255.0f;
+			a = 1.0f;
+
+			return true;
+		}
+	}
+
 	//Parse #RRGGBBAA color from the source
 	if (source.length() < 7 || source[0] != L'#') {
 		return false;
@@ -516,6 +542,17 @@ bool SVGUtil::init(HWND _wnd)
 	if (!SUCCEEDED(hr)) {
 		return false;
 	}
+
+	//Initialize named colors
+	namedColors[L"black"] = D2D1::ColorF::Black;
+	namedColors[L"white"] = D2D1::ColorF::White;
+	namedColors[L"red"] = D2D1::ColorF::Red;
+	namedColors[L"green"] = D2D1::ColorF::Green;
+	namedColors[L"blue"] = D2D1::ColorF::Blue;
+	namedColors[L"orange"] = D2D1::ColorF::Orange;
+	namedColors[L"pink"] = D2D1::ColorF::Pink;
+	namedColors[L"yellow"] = D2D1::ColorF::Yellow;
+	namedColors[L"brown"] = D2D1::ColorF::Brown;
 
 	return true;
 }
