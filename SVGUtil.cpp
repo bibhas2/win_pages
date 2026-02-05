@@ -191,6 +191,27 @@ CComPtr<IDWriteTextFormat> SVGUtil::build_text_format(IDWriteFactory* pDWriteFac
 		fontWeight = DWRITE_FONT_WEIGHT_NORMAL;
 	} else if (weight == L"light") {
 		fontWeight = DWRITE_FONT_WEIGHT_LIGHT;
+	} else if (weight == L"semibold") {
+		fontWeight = DWRITE_FONT_WEIGHT_SEMI_BOLD;
+	} else if (weight == L"medium") {
+		fontWeight = DWRITE_FONT_WEIGHT_MEDIUM;
+	} else if (weight == L"black") {
+		fontWeight = DWRITE_FONT_WEIGHT_BLACK;
+	} else if (weight == L"thin") {
+		fontWeight = DWRITE_FONT_WEIGHT_THIN;
+	}
+	else {
+		std::wstringstream ws;
+
+		ws << weight;
+
+		float wValue = 0.0f;
+
+		if (ws >> wValue) {
+			if (wValue >= 1.0f && wValue <= 1000.0f) {
+				fontWeight = static_cast<DWRITE_FONT_WEIGHT>(static_cast<UINT32>(wValue));
+			}
+		}
 	}
 
 	if (style == L"italic") {
@@ -546,6 +567,24 @@ void SVGLineElement::render(ID2D1DeviceContext* pContext) {
 	}
 }
 
+void SVGTextElement::render(ID2D1DeviceContext* pContext) {
+	if (fillBrush && textFormat) {
+		D2D1_RECT_F layoutRect = D2D1::RectF(
+			points[0], 
+			points[1], 
+			pContext->GetSize().width, 
+			pContext->GetSize().height);
+
+		pContext->DrawText(
+			textContent.c_str(),
+			static_cast<UINT32>(textContent.length()),
+			textFormat,
+			layoutRect,
+			fillBrush
+		);
+	}
+}
+
 bool SVGUtil::init(HWND _wnd)
 {
 	wnd = _wnd;
@@ -765,6 +804,8 @@ bool apply_viewbox(std::shared_ptr<SVGGraphicsElement> e, IXmlReader* pReader) {
 		D2D1_MATRIX_3X2_F viewboxTransform = D2D1::Matrix3x2F::Translation(-vb_x, -vb_y) *
 			D2D1::Matrix3x2F::Scale(scale_x, scale_y);
 		e->combinedTransform = viewboxTransform;
+
+		return true;
 	}
 	else {
 		return false;
@@ -930,6 +971,43 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 					new_element = line_element;
 				}
 			}
+			else if (element_name == L"text") {
+				auto text_element = std::make_shared<SVGTextElement>();
+				float x = 0, y = 0;
+
+				get_attribute(pReader, L"x", x);
+				get_attribute(pReader, L"y", y);
+
+				text_element->points.push_back(x);
+				text_element->points.push_back(y);
+
+				std::wstring_view fontFamily = L"Arial, sans-serif, Verdana";
+				std::wstring_view fontWeight = L"normal";
+				std::wstring_view fontStyle = L"normal";
+				float fontSize = 12.0f;
+
+				if (get_attribute(pReader, L"font-family", attr_value)) {
+					fontFamily = attr_value;
+				}
+				if (get_attribute(pReader, L"font-weight", attr_value)) {
+					fontWeight = attr_value;
+				}
+				if (get_attribute(pReader, L"font-style", attr_value)) {
+					fontStyle = attr_value;
+				}
+
+				get_attribute(pReader, L"font-size", fontSize);
+
+				text_element->textFormat = build_text_format(
+					pDWriteFactory,
+					fontFamily,
+					fontWeight,
+					fontStyle,
+					fontSize
+				);
+
+				new_element = text_element;
+			}
 
 			if (new_element) {
 				new_element->tagName = element_name;
@@ -1045,19 +1123,32 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 			{
 				//Push the new element onto the stack
 				//This may be null if the element is not supported
-				OutputDebugStringW(L"Pushing to parent stack: ");
-				OutputDebugStringW(element_name.data());
-				OutputDebugStringW(L"\n");
 				parent_stack.push(new_element);
 			}
 		}
 		else if (nodeType == XmlNodeType_Text) {
-			const wchar_t* pwszValue = NULL;
-
-			hr = pReader->GetValue(&pwszValue, NULL);
-			if (!SUCCEEDED(hr)) {
+			if (parent_stack.empty()) {
 				return false;
 			}
+
+			std::shared_ptr<SVGGraphicsElement> parent_element = parent_stack.top();
+
+			//If the parent is a text then cast it to SVGTextElement
+			if (!parent_element || parent_element->tagName != L"text") {
+				continue; //Text nodes are only valid inside <text> elements
+			}
+
+			auto text_element = std::dynamic_pointer_cast<SVGTextElement>(parent_element);
+			const wchar_t* pwszValue = NULL;
+			UINT32 len;
+
+			hr = pReader->GetValue(&pwszValue, &len);
+
+			if (!SUCCEEDED(hr) || pwszValue == nullptr) {
+				return false;
+			}
+
+			text_element->textContent.assign(pwszValue, len);
 		}
 		else if (nodeType == XmlNodeType_EndElement) {
 			std::wstring_view element_name;
