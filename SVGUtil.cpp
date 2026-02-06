@@ -337,7 +337,7 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 	wchar_t cmd = 0, last_cmd = 0;
 	bool is_in_figure = false;
-	std::wstring_view supported_cmds(L"MmLlHhVvQqTtCcSsZz");
+	std::wstring_view supported_cmds(L"MmLlHhVvQqTtCcSsAaZz");
 	float current_x = 0.0, current_y = 0.0;
 	float last_ctrl_x = 0.0, last_ctrl_y = 0.0;
 
@@ -529,6 +529,29 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			current_y = y3;
 			last_ctrl_x = x2;
 			last_ctrl_y = y2;
+		} else if (cmd == L'A' || cmd == L'a') {
+			// TODO: Handle elliptical arc commands
+			float rx = 0.0, ry = 0.0, x_axis_rotation = 0.0, x = 0.0, y = 0.0;
+			int large_arc_flag = 0, sweep_flag = 0;
+
+			ws >> rx >> ry >> x_axis_rotation >> large_arc_flag >> sweep_flag >> x >> y;
+			
+			if (cmd == L'a') {
+				x += current_x;
+				y += current_y;
+			}
+
+			pSink->AddArc(D2D1::ArcSegment(
+				D2D1::Point2F(x, y),
+				D2D1::SizeF(rx, ry),
+				x_axis_rotation,
+				(sweep_flag != 0) ? D2D1_SWEEP_DIRECTION_CLOCKWISE : D2D1_SWEEP_DIRECTION_COUNTER_CLOCKWISE,
+				(large_arc_flag != 0) ? D2D1_ARC_SIZE_LARGE : D2D1_ARC_SIZE_SMALL
+			));
+
+			//Update current point
+			current_x = x;
+			current_y = y;
 		} else if (cmd == L'Z' || cmd == L'z') {
 			//Close the current figure
 			if (is_in_figure) {
