@@ -1,0 +1,9 @@
+<?xml version="1.0" standalone="no"?>
+<svg width="600" height="400" viewBox="0 0 600 400"
+     xmlns="http://www.w3.org/2000/svg" version="1.1">
+<!--Test for length units-->
+  <rect x="10px" y="10" width="4in" height="2in"
+        fill="none" stroke="blue" stroke-width="1" />
+  <line x1="1cm" y1="1cm" x2="10cm" y2="6cm"
+        stroke="red" stroke-width="2" />
+</svg>

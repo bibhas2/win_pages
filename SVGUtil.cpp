@@ -817,37 +817,72 @@ bool get_attribute(IXmlReader* pReader, const wchar_t* attr_name, std::wstring_v
 	return true;
 }
 
-bool get_attribute(IXmlReader* pReader, const wchar_t* attr_name, float& attr_value) {
-	const wchar_t* pwszValue = NULL;
-	UINT len;
+bool get_size_value(ID2D1DeviceContext *pContext, const std::wstring_view& source, float& size) {
 
-	HRESULT hr = pReader->MoveToAttributeByName(attr_name, NULL);
+	try {
+		size_t len;
+		std::wstring_view unit;
 
-	if (hr == S_FALSE) {
-		return false; //Attribute not found
+		size = std::stof(std::wstring(source), &len);
+
+		if (len < source.length()) {
+			unit = std::wstring_view(source).substr(len);
+		}
+		else {
+			return true; //No unit specified, assume pixels
+		}
+
+		float dpiX, dpiY;
+		
+		pContext->GetDpi(&dpiX, &dpiY);
+
+		//Take an average of the horizontal and vertical DPI for unit conversion
+		float dpi = (dpiX + dpiY) / 2.0f;
+
+		if (unit == L"px") {
+			//Pixels, do nothing
+		}
+		else if (unit == L"in") {
+			size *= dpi; //Inches to pixels
+		}
+		else if (unit == L"cm") {
+			size *= dpi / 2.54f; //Centimeters to pixels
+		}
+		else if (unit == L"mm") {
+			size *= dpi / 25.4f; //Millimeters to pixels
+		}
+		else if (unit == L"pt") {
+			size *= dpi / 72.0f; //Points to pixels
+		}
+		else if (unit == L"pc") {
+			size *= dpi / 6.0f; //Picas to pixels
+		}
+
+		return true;
 	}
-
-	if (!SUCCEEDED(hr)) {
+	catch (const std::exception& e) {
 		return false;
 	}
-
-	hr = pReader->GetValue(&pwszValue, &len);
-
-	if (!SUCCEEDED(hr)) {
-		return false;
-	}
-
-	return swscanf_s(pwszValue, L"%f", &attr_value) == 1;
 }
 
-bool apply_viewbox(std::shared_ptr<SVGGraphicsElement> e, IXmlReader* pReader) {
+bool get_size_attribute(IXmlReader* pReader, ID2D1DeviceContext* pContext, const wchar_t* attr_name, float& size) {
+	std::wstring_view attr_value;
+
+	if (!get_attribute(pReader, attr_name, attr_value)) {
+		return false;
+	}
+
+	return get_size_value(pContext, attr_value, size);
+}
+
+bool apply_viewbox(ID2D1DeviceContext* pContext, std::shared_ptr<SVGGraphicsElement> e, IXmlReader* pReader) {
 	//Default viewport width and height
 	float width = 300.0f, height = 150.0f;
 	float vb_x = 0.0f, vb_y = 0.0f, vb_width = width, vb_height = height;
 
 	//Read width and height attributes
-	get_attribute(pReader, L"width", width);
-	get_attribute(pReader, L"height", height);
+	get_size_attribute(pReader, pContext, L"width", width);
+	get_size_attribute(pReader, pContext, L"height", height);
 
 	std::wstring_view viewBoxStr;
 	std::wstringstream ws;
@@ -875,10 +910,11 @@ bool apply_viewbox(std::shared_ptr<SVGGraphicsElement> e, IXmlReader* pReader) {
 		//Calculate scale factors
 		float scale_x = width / vb_width;
 		float scale_y = height / vb_height;
+		float scale = scale_x < scale_y ? scale_x : scale_y;
 
 		//Create transform matrix
 		D2D1_MATRIX_3X2_F viewboxTransform = D2D1::Matrix3x2F::Translation(-vb_x, -vb_y) *
-			D2D1::Matrix3x2F::Scale(scale_x, scale_y);
+			D2D1::Matrix3x2F::Scale(scale, scale);
 		e->combinedTransform = viewboxTransform;
 
 		return true;
@@ -963,21 +999,21 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 					//Inner svg elements have some special treatment
 					float x = 0.0f, y = 0.0f, width = 100.0f, height = 100.0f;
 
-					if (get_attribute(pReader, L"x", x) &&
-						get_attribute(pReader, L"y", y)) {
+					if (get_size_attribute(pReader, pDeviceContext, L"x", x) &&
+						get_size_attribute(pReader, pDeviceContext, L"y", y)) {
 						//Position the inner SVG element
 						new_element->combinedTransform = D2D1::Matrix3x2F::Translation(x, y);
 					}
 				}
 
-				apply_viewbox(new_element, pReader);
+				apply_viewbox(pDeviceContext, new_element, pReader);
 			}
 			else if (element_name == L"rect") {
 				float x, y, width, height;
-				if (get_attribute(pReader, L"x", x) &&
-					get_attribute(pReader, L"y", y) &&
-					get_attribute(pReader, L"width", width) &&
-					get_attribute(pReader, L"height", height)) {
+				if (get_size_attribute(pReader, pDeviceContext, L"x", x) &&
+					get_size_attribute(pReader, pDeviceContext, L"y", y) &&
+					get_size_attribute(pReader, pDeviceContext, L"width", width) &&
+					get_size_attribute(pReader, pDeviceContext, L"height", height)) {
 					new_element = std::make_shared<SVGRectElement>();
 
 					new_element->points.push_back(x);
@@ -989,9 +1025,9 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 			else if (element_name == L"circle") {
 				float cx, cy, r;
 
-				if (get_attribute(pReader, L"cx", cx) &&
-					get_attribute(pReader, L"cy", cy) &&
-					get_attribute(pReader, L"r", r)) {
+				if (get_size_attribute(pReader, pDeviceContext, L"cx", cx) &&
+					get_size_attribute(pReader, pDeviceContext, L"cy", cy) &&
+					get_size_attribute(pReader, pDeviceContext, L"r", r)) {
 					
 					auto circle_element = std::make_shared<SVGCircleElement>();
 
@@ -1005,10 +1041,10 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 			else if (element_name == L"ellipse") {
 				float cx, cy, rx, ry;
 
-				if (get_attribute(pReader, L"cx", cx) &&
-					get_attribute(pReader, L"cy", cy) &&
-					get_attribute(pReader, L"rx", rx) &&
-					get_attribute(pReader, L"ry", ry)) {
+				if (get_size_attribute(pReader, pDeviceContext, L"cx", cx) &&
+					get_size_attribute(pReader, pDeviceContext, L"cy", cy) &&
+					get_size_attribute(pReader, pDeviceContext, L"rx", rx) &&
+					get_size_attribute(pReader, pDeviceContext, L"ry", ry)) {
 					
 					auto ellipse_element = std::make_shared<SVGEllipseElement>();
 
@@ -1032,10 +1068,10 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 			} else if (element_name == L"line") {
 				float x1, y1, x2, y2;
 
-				if (get_attribute(pReader, L"x1", x1) &&
-					get_attribute(pReader, L"y1", y1) &&
-					get_attribute(pReader, L"x2", x2) &&
-					get_attribute(pReader, L"y2", y2)) {
+				if (get_size_attribute(pReader, pDeviceContext, L"x1", x1) &&
+					get_size_attribute(pReader, pDeviceContext, L"y1", y1) &&
+					get_size_attribute(pReader, pDeviceContext, L"x2", x2) &&
+					get_size_attribute(pReader, pDeviceContext, L"y2", y2)) {
 					
 					auto line_element = std::make_shared<SVGLineElement>();
 
@@ -1051,8 +1087,8 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				auto text_element = std::make_shared<SVGTextElement>();
 				float x = 0, y = 0;
 
-				get_attribute(pReader, L"x", x);
-				get_attribute(pReader, L"y", y);
+				get_size_attribute(pReader, pDeviceContext, L"x", x);
+				get_size_attribute(pReader, pDeviceContext, L"y", y);
 
 				text_element->points.push_back(x);
 				text_element->points.push_back(y);
@@ -1072,7 +1108,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 					fontStyle = attr_value;
 				}
 
-				get_attribute(pReader, L"font-size", fontSize);
+				get_size_attribute(pReader, pDeviceContext, L"font-size", fontSize);
 
 				text_element->textFormat = build_text_format(
 					pDWriteFactory,
@@ -1132,7 +1168,8 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				//Get fill opacity
 				float fillOpacity;
 
-				if (get_attribute(pReader, L"fill-opacity", fillOpacity)) {
+				//TBD: Read this as a plain float value and not size attribute
+				if (get_size_attribute(pReader, pDeviceContext, L"fill-opacity", fillOpacity)) {
 					new_element->fillOpacity = fillOpacity;
 				}
 				else {
@@ -1171,7 +1208,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				//Get stroke width
 				float strokeWidth;
 
-				if (get_attribute(pReader, L"stroke-width", strokeWidth)) {
+				if (get_size_attribute(pReader, pDeviceContext, L"stroke-width", strokeWidth)) {
 					new_element->strokeWidth = strokeWidth;
 				} else {
 					if (parent_element) {
