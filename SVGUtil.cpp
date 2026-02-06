@@ -337,7 +337,7 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 
 	wchar_t cmd = 0, last_cmd = 0;
 	bool is_in_figure = false;
-	std::wstring_view supported_cmds(L"MLHVQTCSZz");
+	std::wstring_view supported_cmds(L"MmLlHhVvQqTtCcSsZz");
 	float current_x = 0.0, current_y = 0.0;
 	float last_ctrl_x = 0.0, last_ctrl_y = 0.0;
 
@@ -356,6 +356,9 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			if (last_cmd == L'M') {
 				//Subsequent moveto pairs are treated as lineto commands
 				cmd = L'L';
+			} else if (last_cmd == L'm') {
+				//Subsequent moveto pairs are treated as lineto commands
+				cmd = L'l';
 			}
 			else {
 				//Continue with the last command
@@ -363,7 +366,7 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			}
 		}
 
-		if (cmd == L'M') {
+		if (cmd == L'M' || cmd == L'm') {
 			float x = 0.0, y = 0.0;
 
 			//If we are already in a figure, end it first
@@ -372,6 +375,11 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			}
 
 			ws >> x >> y;
+			
+			if (cmd == L'm') {
+				x += current_x;
+				y += current_y;
+			}
 
 			pSink->BeginFigure(D2D1::Point2F(x, y), D2D1_FIGURE_BEGIN_FILLED);
 			is_in_figure = true;
@@ -379,10 +387,15 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			current_x = x;
 			current_y = y;
 		}
-		else if (cmd == L'L') {
+		else if (cmd == L'L' || cmd == L'l') {
 			float x = 0.0, y = 0.0;
 
 			ws >> x >> y;
+
+			if (cmd == L'l') {
+				x += current_x;
+				y += current_y;
+			}
 
 			pSink->AddLine(D2D1::Point2F(x, y));
 
@@ -390,30 +403,45 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			current_x = x;
 			current_y = y;
 		}
-		else if (cmd == L'H') {
+		else if (cmd == L'H' || cmd == L'h') {
 			float x = 0.0;
 
 			ws >> x;
+
+			if (cmd == L'h') {
+				x += current_x;
+			}
 
 			pSink->AddLine(D2D1::Point2F(x, current_y));
 
 			//Update current point
 			current_x = x;
 		}
-		else if (cmd == L'V') {
+		else if (cmd == L'V' || cmd == L'v') {
 			float y = 0.0;
 
 			ws >> y;
+
+			if (cmd == L'v') {
+				y += current_y;
+			}
 
 			pSink->AddLine(D2D1::Point2F(current_x, y));
 
 			//Update current point
 			current_y = y;
 		}
-		else if (cmd == L'Q') {
+		else if (cmd == L'Q' || cmd == L'q') {
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
 
 			ws >> x1 >> y1 >> x2 >> y2;
+			
+			if (cmd == L'q') {
+				x1 += current_x;
+				y1 += current_y;
+				x2 += current_x;
+				y2 += current_y;
+			}
 
 			pSink->AddQuadraticBezier(D2D1::QuadraticBezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2)));
 
@@ -423,13 +451,18 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			last_ctrl_x = x1;
 			last_ctrl_y = y1;
 		}
-		else if (cmd == L'T') {
+		else if (cmd == L'T' || cmd == L't') {
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
 
 			ws >> x2 >> y2;
+			
+			if (cmd == L't') {
+				x2 += current_x;
+				y2 += current_y;
+			}
 
 			//Calculate the control point by reflecting the last control point
-			if (last_cmd == L'Q' || last_cmd == L'T') {
+			if (last_cmd == L'Q' || last_cmd == L'T' || last_cmd == L'q' || last_cmd == L't') {
 				x1 = 2 * current_x - last_ctrl_x;
 				y1 = 2 * current_y - last_ctrl_y;
 			} else {
@@ -445,9 +478,20 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			last_ctrl_x = x1;
 			last_ctrl_y = y1;
 		} 
-		else if (cmd == L'C') {
+		else if (cmd == L'C' || cmd == L'c') {
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0, x3 = 0.0, y3 = 0.0;
+
 			ws >> x1 >> y1 >> x2 >> y2 >> x3 >> y3;
+
+			if (cmd == L'c') {
+				x1 += current_x;
+				y1 += current_y;
+				x2 += current_x;
+				y2 += current_y;
+				x3 += current_x;
+				y3 += current_y;
+			}
+
 			pSink->AddBezier(D2D1::BezierSegment(D2D1::Point2F(x1, y1), D2D1::Point2F(x2, y2), D2D1::Point2F(x3, y3)));
 
 			//Update current point
@@ -456,12 +500,20 @@ void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& 
 			last_ctrl_x = x2;
 			last_ctrl_y = y2;
 		}
-		else if (cmd == L'S') {
+		else if (cmd == L'S' || cmd == L's') {
 			float x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0, x3 = 0.0, y3 = 0.0;
+
 			ws >> x2 >> y2 >> x3 >> y3;
 
+			if (cmd == L's') {
+				x2 += current_x;
+				y2 += current_y;
+				x3 += current_x;
+				y3 += current_y;
+			}
+
 			//Calculate the first control point by reflecting the last control point
-			if (last_cmd == L'C' || last_cmd == L'S') {
+			if (last_cmd == L'C' || last_cmd == L'S' || last_cmd == L'c' || last_cmd == L's') {
 				x1 = 2 * current_x - last_ctrl_x;
 				y1 = 2 * current_y - last_ctrl_y;
 			}
