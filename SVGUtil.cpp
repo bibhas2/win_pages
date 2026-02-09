@@ -36,7 +36,23 @@ static split_string(std::wstring_view source, std::wstring_view separator) {
 	return list;
 }
 
-bool SVGUtil::get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a) {
+bool get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a) {
+	//Initialize named colors
+	std::map<std::wstring, UINT32> namedColors = {
+		{L"black", D2D1::ColorF::Black},
+		{L"white", D2D1::ColorF::White},
+		{L"red", D2D1::ColorF::Red},
+		{L"green", D2D1::ColorF::Green},
+		{L"blue", D2D1::ColorF::Green},
+		{L"orange", D2D1::ColorF::Blue},
+		{L"pink", D2D1::ColorF::Orange},
+		{L"yellow", D2D1::ColorF::Yellow},
+		{L"brown", D2D1::ColorF::Brown},
+		{L"grey", D2D1::ColorF::Gray},
+		{L"gray", D2D1::ColorF::Gray},
+		{L"teal", D2D1::ColorF::Teal},
+	};
+
 	if (source.empty()) {
 		return false;
 	}
@@ -724,19 +740,7 @@ bool SVGUtil::init(HWND _wnd)
 		return false;
 	}
 
-	//Initialize named colors
-	namedColors[L"black"] = D2D1::ColorF::Black;
-	namedColors[L"white"] = D2D1::ColorF::White;
-	namedColors[L"red"] = D2D1::ColorF::Red;
-	namedColors[L"green"] = D2D1::ColorF::Green;
-	namedColors[L"blue"] = D2D1::ColorF::Blue;
-	namedColors[L"orange"] = D2D1::ColorF::Orange;
-	namedColors[L"pink"] = D2D1::ColorF::Pink;
-	namedColors[L"yellow"] = D2D1::ColorF::Yellow;
-	namedColors[L"brown"] = D2D1::ColorF::Brown;
-	namedColors[L"grey"] = D2D1::ColorF::Gray;
-	namedColors[L"gray"] = D2D1::ColorF::Gray;
-	namedColors[L"teal"] = D2D1::ColorF::Teal;
+
 
 	//Create default text format
 	defaultTextFormat = build_text_format(
@@ -916,10 +920,10 @@ void collect_styles(IXmlReader* pReader, std::shared_ptr<SVGGraphicsElement>& ne
 	}
 }
 
-static bool get_style_computed(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, const std::shared_ptr<SVGGraphicsElement>& element, const std::wstring& style_name, std::wstring& style_value) {
-	auto it = element->styles.find(style_name);
+static bool get_style_computed(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, const SVGGraphicsElement& element, const std::wstring& style_name, std::wstring& style_value) {
+	auto it = element.styles.find(style_name);
 
-	if (it != element->styles.end()) {
+	if (it != element.styles.end()) {
 		style_value = it->second;
 
 		return true;
@@ -941,7 +945,7 @@ static bool get_style_computed(const std::vector<std::shared_ptr<SVGGraphicsElem
 	return false;
 }
 
-static void get_style_computed(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, const std::shared_ptr<SVGGraphicsElement>& element, const std::wstring& style_name, std::wstring& style_value, const std::wstring& default_value) {
+static void get_style_computed(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, const SVGGraphicsElement& element, const std::wstring& style_name, std::wstring& style_value, const std::wstring& default_value) {
 	if (!get_style_computed(parent_stack, element, style_name, style_value)) {
 		style_value = default_value;
 	}
@@ -994,6 +998,78 @@ bool apply_viewbox(ID2D1DeviceContext* pContext, std::shared_ptr<SVGGraphicsElem
 	else {
 		return false;
 	}
+}
+
+void SVGGraphicsElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext) {
+	std::wstring style_value;
+	HRESULT hr = S_OK;
+
+	//Set brushes
+	get_style_computed(parent_stack, *this, L"stroke", style_value, L"none");
+
+	if (style_value == L"none") {
+		this->strokeBrush = nullptr;
+	}
+	else {
+		float r, g, b, a;
+
+		if (get_rgba(style_value, r, g, b, a)) {
+			CComPtr<ID2D1SolidColorBrush> brush;
+
+			hr = pDeviceContext->CreateSolidColorBrush(
+				D2D1::ColorF(r, g, b, a),
+				&brush
+			);
+
+			if (SUCCEEDED(hr)) {
+				this->strokeBrush = brush;
+			}
+		}
+	}
+
+	//Get fill opacity
+	//TBD: We read this as a size, even though only % and plain numbers are allowed.
+	float fillOpacity = 0.0f;
+
+	if (get_style_computed(parent_stack, *this, L"fill-opacity", style_value) &&
+		get_size_value(pDeviceContext, style_value, fillOpacity)) {
+
+		this->fillOpacity = fillOpacity;
+	}
+
+	//Get fill
+	get_style_computed(parent_stack, *this, L"fill", style_value, L"black");
+
+	if (style_value == L"none") {
+		this->fillBrush = nullptr;
+	}
+	else {
+		float r, g, b, a;
+
+		if (get_rgba(style_value, r, g, b, a)) {
+			CComPtr<ID2D1SolidColorBrush> brush;
+
+			hr = pDeviceContext->CreateSolidColorBrush(
+				D2D1::ColorF(r, g, b, a * this->fillOpacity),
+				&brush
+			);
+			if (SUCCEEDED(hr)) {
+				this->fillBrush = brush;
+			}
+		}
+	}
+
+	//Get stroke width
+	float strokeWidth;
+
+	if (get_style_computed(parent_stack, *this, L"stroke-width", style_value) &&
+		get_size_value(pDeviceContext, style_value, strokeWidth)) {
+		this->strokeWidth = strokeWidth;
+	}
+}
+
+void SVGGElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext) {
+	//Group element doesn't need to create any brushes.
 }
 
 bool SVGUtil::parse(const wchar_t* fileName) {
@@ -1213,70 +1289,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 
 				collect_styles(pReader, new_element);
 
-				std::wstring style_value;
-
-				//Set brushes
-				get_style_computed(parent_stack, new_element, L"stroke", style_value, L"none");
-
-				if (style_value == L"none") {
-					new_element->strokeBrush = nullptr;
-				}
-				else {
-					float r, g, b, a;
-
-					if (get_rgba(style_value, r, g, b, a)) {
-						CComPtr<ID2D1SolidColorBrush> brush;
-
-						hr = pDeviceContext->CreateSolidColorBrush(
-							D2D1::ColorF(r, g, b, a),
-							&brush
-						);
-
-						if (SUCCEEDED(hr)) {
-							new_element->strokeBrush = brush;
-						}
-					}
-				}
-				
-				//Get fill opacity
-				//TBD: We read this as a size, even though only % and plain numbers are allowed.
-				float fillOpacity = 0.0f;
-
-				if (get_style_computed(parent_stack, new_element, L"fill-opacity", style_value) &&
-					get_size_value(pDeviceContext, style_value, fillOpacity)) {
-					
-					new_element->fillOpacity = fillOpacity;
-				}
-
-				//Get fill
-				get_style_computed(parent_stack, new_element, L"fill", style_value, L"black");
-
-				if (style_value == L"none") {
-					new_element->fillBrush = nullptr;
-				}
-				else {
-					float r, g, b, a;
-
-					if (get_rgba(style_value, r, g, b, a)) {
-						CComPtr<ID2D1SolidColorBrush> brush;
-
-						hr = pDeviceContext->CreateSolidColorBrush(
-							D2D1::ColorF(r, g, b, a * new_element->fillOpacity),
-							&brush
-						);
-						if (SUCCEEDED(hr)) {
-							new_element->fillBrush = brush;
-						}
-					}
-				}
-
-				//Get stroke width
-				float strokeWidth;
-
-				if (get_style_computed(parent_stack, new_element, L"stroke-width", style_value) && 
-					get_size_value(pDeviceContext, style_value, strokeWidth)) {
-					new_element->strokeWidth = strokeWidth;
-				}
+				new_element->configure_presentation_style(parent_stack, pDeviceContext);
 
 				if (parent_element) {
 					//Add the new element to its parent

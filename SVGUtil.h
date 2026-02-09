@@ -23,9 +23,11 @@ struct SVGGraphicsElement {
 
 	virtual void render_tree(ID2D1DeviceContext* pContext);
 	virtual void render(ID2D1DeviceContext* pContext) {};
+	virtual void configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext);
 };
 
 struct SVGGElement : public SVGGraphicsElement {
+	void configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext) override;
 };
 
 struct SVGRectElement : public SVGGraphicsElement {
@@ -70,14 +72,12 @@ struct SVGUtil
 	CComPtr<ID2D1SolidColorBrush> defaultStrokeBrush;
 	CComPtr<IDWriteTextFormat> defaultTextFormat;
 	std::shared_ptr<SVGGraphicsElement> rootElement;
-	std::map<std::wstring, UINT32> namedColors;
 
 	bool init(HWND wnd);
 	void resize();
 	void render();
 	void redraw();
 	bool parse(const wchar_t* fileName);
-	bool get_rgba(std::wstring_view source, float& r, float& g, float& b, float& a);
 	CComPtr<IDWriteTextFormat> build_text_format(IDWriteFactory* pDWriteFactory, std::wstring_view family, std::wstring_view weight, std::wstring_view style, float size);
 };
 
