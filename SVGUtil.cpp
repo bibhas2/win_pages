@@ -1342,6 +1342,11 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 			}
 
 			auto text_element = std::dynamic_pointer_cast<SVGTextElement>(parent_element);
+
+			if (!text_element) {
+				return false;
+			}
+
 			const wchar_t* pwszValue = NULL;
 			UINT32 len;
 
