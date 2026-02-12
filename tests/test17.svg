@@ -1,0 +1,9 @@
+<svg viewBox="0 0 15 120" xmlns="http://www.w3.org/2000/svg">
+<!-- Test for line join -->
+  <g stroke="black" stroke-width="1" transform="scale(10,10)" fill="none">
+    <path stroke-linejoin="bevel" d="M2,5  a2,2 0,0,0 2,-3 a3,3 0 0 1 2,3.5" />
+    <path stroke-linejoin="round" d="M8,5  a2,2 0,0,0 2,-3 a3,3 0 0 1 2,3.5" />
+    <path stroke-linejoin="miter" d="M2,11 a2,2 0,0,0 2,-3 a3,3 0 0 1 2,3.5" />
+    <path stroke-linejoin="miter" stroke-miterlimit="2" d="M8,11 a2,2 0,0,0 2,-3 a3,3 0 0 1 2,3.5" />
+  </g>
+</svg>

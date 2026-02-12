@@ -931,6 +931,8 @@ void collect_styles(IXmlReader* pReader, std::shared_ptr<SVGGraphicsElement>& ne
 		L"fill-opacity", 
 		L"stroke-opacity",
 		L"stroke-linecap",
+		L"stroke-linejoin",
+		L"stroke-miterlimit",
 		L"stroke", 
 		L"stroke-width", 
 		L"font-family", 
@@ -1071,12 +1073,29 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 			}
 		}
 
+		D2D1_LINE_JOIN line_join = D2D1_LINE_JOIN_MITER;
+
+		if (get_style_computed(parent_stack, L"stroke-linejoin", style_value)) {
+			if (style_value == L"bevel") {
+				line_join = D2D1_LINE_JOIN_BEVEL;
+			}
+			else if (style_value == L"round") {
+				line_join = D2D1_LINE_JOIN_ROUND;
+			}
+		}
+
+		float miter_limit = 4.0f;
+
+		if (get_style_computed(parent_stack, L"stroke-miterlimit", style_value) &&
+			get_size_value(pDeviceContext, style_value, miter_limit)) {
+		}
+
 		D2D1_STROKE_STYLE_PROPERTIES stroke_properties = D2D1::StrokeStyleProperties(
 			cap_style,     // Start cap
-			cap_style//,     // End cap
-			//D2D1_CAP_STYLE_ROUND,    // Dash cap
-			//D2D1_LINE_JOIN_MITER,    // Line join
-			//10.0f,                   // Miter limit
+			cap_style,     // End cap
+			D2D1_CAP_STYLE_ROUND,    // Dash cap
+			line_join,    // Line join
+			miter_limit//,                   // Miter limit
 			//D2D1_DASH_STYLE_CUSTOM,  // Dash style
 			//0.0f                     // Dash offset
 		);
