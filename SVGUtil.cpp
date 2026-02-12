@@ -346,8 +346,8 @@ bool char_is_number(wchar_t ch) {
 	return (ch >= 48 && ch <= 57) || (ch == L'.') || (ch == L'-');
 }
 
-void SVGPathElement::buildPath(ID2D1Factory* pFactory, const std::wstring_view& pathData) {
-	pFactory->CreatePathGeometry(&path_geometry);
+void SVGPathElement::buildPath(ID2D1Factory* pD2DFactory, const std::wstring_view& pathData) {
+	pD2DFactory->CreatePathGeometry(&path_geometry);
 
 	CComPtr<ID2D1GeometrySink> pSink;
 
@@ -619,7 +619,7 @@ void SVGPathElement::render(ID2D1DeviceContext* pContext) {
 		pContext->FillGeometry(path_geometry, fill_brush);
 	}
 	if (stroke_brush) {
-		pContext->DrawGeometry(path_geometry, stroke_brush, stroke_width);
+		pContext->DrawGeometry(path_geometry, stroke_brush, stroke_width, stroke_style);
 	}
 }
 
@@ -634,7 +634,8 @@ void SVGRectElement::render(ID2D1DeviceContext* pContext) {
 		pContext->DrawRectangle(
 			D2D1::RectF(points[0], points[1], points[0] + points[2], points[1] + points[3]),
 			stroke_brush,
-			stroke_width
+			stroke_width,
+			stroke_style
 		);
 	}
 }
@@ -678,7 +679,8 @@ void SVGLineElement::render(ID2D1DeviceContext* pContext) {
 			D2D1::Point2F(points[0], points[1]),
 			D2D1::Point2F(points[2], points[3]),
 			stroke_brush,
-			stroke_width
+			stroke_width,
+			stroke_style
 		);
 	}
 }
@@ -698,7 +700,7 @@ bool SVGUtil::init(HWND _wnd)
 {
 	wnd = _wnd;
 
-	HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &pFactory);
+	HRESULT hr = D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &pD2DFactory);
 	
 	if (!SUCCEEDED(hr)) {
 		return false;
@@ -719,7 +721,7 @@ bool SVGUtil::init(HWND _wnd)
 
 	GetClientRect(_wnd, &rc);
 
-	hr = pFactory->CreateHwndRenderTarget(
+	hr = pD2DFactory->CreateHwndRenderTarget(
 		D2D1::RenderTargetProperties(),
 		D2D1::HwndRenderTargetProperties(
 			_wnd,
@@ -928,6 +930,7 @@ void collect_styles(IXmlReader* pReader, std::shared_ptr<SVGGraphicsElement>& ne
 		L"fill", 
 		L"fill-opacity", 
 		L"stroke-opacity",
+		L"stroke-linecap",
 		L"stroke", 
 		L"stroke-width", 
 		L"font-family", 
@@ -963,7 +966,7 @@ bool SVGGraphicsElement::get_style_computed(const std::vector<std::shared_ptr<SV
 		if (styleIt != parent->styles.end()) {
 			style_value = styleIt->second;
 
-			return true;
+return true;
 		}
 	}
 
@@ -1025,7 +1028,7 @@ bool apply_viewbox(ID2D1DeviceContext* pContext, std::shared_ptr<SVGGraphicsElem
 	}
 }
 
-void SVGGraphicsElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext) {
+void SVGGraphicsElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext, ID2D1Factory* pD2DFactory) {
 	std::wstring style_value;
 	HRESULT hr = S_OK;
 
@@ -1055,6 +1058,40 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 			if (SUCCEEDED(hr)) {
 				this->stroke_brush = brush;
 			}
+		}
+
+		D2D1_CAP_STYLE cap_style = D2D1_CAP_STYLE_FLAT;
+
+		if (get_style_computed(parent_stack, L"stroke-linecap", style_value)) {
+			if (style_value == L"round") {
+				cap_style = D2D1_CAP_STYLE_ROUND;
+			}
+			else if (style_value == L"square") {
+				cap_style = D2D1_CAP_STYLE_SQUARE;
+			}
+		}
+
+		D2D1_STROKE_STYLE_PROPERTIES stroke_properties = D2D1::StrokeStyleProperties(
+			cap_style,     // Start cap
+			cap_style//,     // End cap
+			//D2D1_CAP_STYLE_ROUND,    // Dash cap
+			//D2D1_LINE_JOIN_MITER,    // Line join
+			//10.0f,                   // Miter limit
+			//D2D1_DASH_STYLE_CUSTOM,  // Dash style
+			//0.0f                     // Dash offset
+		);
+
+		CComPtr<ID2D1StrokeStyle> ss;
+
+		hr = pD2DFactory->CreateStrokeStyle(
+			&stroke_properties,
+			nullptr,
+			0,
+			&ss
+		);
+
+		if (SUCCEEDED(hr)) {
+			this->stroke_style = ss;
 		}
 	}
 
@@ -1097,12 +1134,12 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 	}
 }
 
-void SVGGElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext) {
+void SVGGElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext, ID2D1Factory* pD2DFactory) {
 	//Group element doesn't need to create any brushes.
 }
 
-void SVGTextElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext) {
-	SVGGraphicsElement::configure_presentation_style(parent_stack, pDeviceContext);
+void SVGTextElement::configure_presentation_style(const std::vector<std::shared_ptr<SVGGraphicsElement>>& parent_stack, ID2D1DeviceContext* pDeviceContext, ID2D1Factory* pD2DFactory) {
+	SVGGraphicsElement::configure_presentation_style(parent_stack, pDeviceContext, pD2DFactory);
 
 	std::wstring fontFamily;
 	std::wstring fontWeight;
@@ -1262,7 +1299,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				if (get_attribute(pReader, L"d", attr_value)) {
 					auto path_element = std::make_shared<SVGPathElement>();
 
-					path_element->buildPath(pFactory, attr_value);
+					path_element->buildPath(pD2DFactory, attr_value);
 					new_element = path_element;
 				}
 			} else if (element_name == L"group" || element_name == L"g") {
@@ -1324,7 +1361,7 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 
 				collect_styles(pReader, new_element);
 
-				new_element->configure_presentation_style(parent_stack, pDeviceContext);
+				new_element->configure_presentation_style(parent_stack, pDeviceContext, pD2DFactory);
 
 				if (parent_element) {
 					//Add the new element to its parent
