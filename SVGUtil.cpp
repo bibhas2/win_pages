@@ -925,7 +925,15 @@ void collect_styles(IXmlReader* pReader, std::shared_ptr<SVGGraphicsElement>& ne
 	}
 
 	const wchar_t* presentation_attributes[] = {
-		L"fill", L"fill-opacity", L"stroke", L"stroke-width", L"font-family", L"font-size", L"font-weight", L"font-style"
+		L"fill", 
+		L"fill-opacity", 
+		L"stroke-opacity",
+		L"stroke", 
+		L"stroke-width", 
+		L"font-family", 
+		L"font-size", 
+		L"font-weight", 
+		L"font-style"
 	};
 
 	for (const wchar_t* attr_name : presentation_attributes) {
@@ -1022,6 +1030,14 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 	HRESULT hr = S_OK;
 
 	//Set brushes
+	float opacity = 1.0f;
+
+	if (get_style_computed(parent_stack, L"stroke-opacity", style_value) &&
+		get_size_value(pDeviceContext, style_value, opacity)) {
+
+		this->stroke_opacity = opacity;
+	}
+
 	get_style_computed(parent_stack, L"stroke", style_value, L"none");
 
 	if (style_value == L"none") {
@@ -1034,7 +1050,7 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 			CComPtr<ID2D1SolidColorBrush> brush;
 
 			hr = pDeviceContext->CreateSolidColorBrush(
-				D2D1::ColorF(r, g, b, a),
+				D2D1::ColorF(r, g, b, a * this->stroke_opacity),
 				&brush
 			);
 
@@ -1046,12 +1062,12 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 
 	//Get fill opacity
 	//TBD: We read this as a size, even though only % and plain numbers are allowed.
-	float fillOpacity = 0.0f;
+	opacity = 1.0f;
 
 	if (get_style_computed(parent_stack, L"fill-opacity", style_value) &&
-		get_size_value(pDeviceContext, style_value, fillOpacity)) {
+		get_size_value(pDeviceContext, style_value, opacity)) {
 
-		this->fillOpacity = fillOpacity;
+		this->fillOpacity = opacity;
 	}
 
 	//Get fill
@@ -1077,11 +1093,11 @@ void SVGGraphicsElement::configure_presentation_style(const std::vector<std::sha
 	}
 
 	//Get stroke width
-	float strokeWidth;
+	float w;
 
 	if (get_style_computed(parent_stack, L"stroke-width", style_value) &&
-		get_size_value(pDeviceContext, style_value, strokeWidth)) {
-		this->strokeWidth = strokeWidth;
+		get_size_value(pDeviceContext, style_value, w)) {
+		this->strokeWidth = w;
 	}
 }
 
@@ -1286,6 +1302,10 @@ bool SVGUtil::parse(const wchar_t* fileName) {
 				text_element->pDWriteFactory = pDWriteFactory;
 
 				new_element = text_element;
+			}
+			else {
+				//Unknown element
+				new_element = std::make_shared<SVGGraphicsElement>();
 			}
 
 			if (new_element) {
